@@ -9,6 +9,7 @@ import 'docker_screen.dart';
 import 'automation_screen.dart';
 import 'notifications_screen.dart';
 import 'clipboard_screen.dart';
+import 'unlock_screen.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
@@ -354,6 +355,29 @@ class DashboardScreen extends StatelessWidget {
                             context,
                             MaterialPageRoute(
                               builder: (_) => ClipboardScreen(
+                                ip: state.ip,
+                                port: state.port,
+                                token: token,
+                              ),
+                            ),
+                          );
+                        }
+                      },
+                    ),
+
+                    // Item 8: Biometric Unlock
+                    _buildToolGridCard(
+                      context: context,
+                      icon: Icons.fingerprint_rounded,
+                      name: 'Unlock',
+                      color: Colors.greenAccent,
+                      onTap: () async {
+                        final token = await ApiClient().getToken();
+                        if (token != null && context.mounted) {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => UnlockScreen(
                                 ip: state.ip,
                                 port: state.port,
                                 token: token,

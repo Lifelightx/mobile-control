@@ -89,14 +89,14 @@ class WebSocketClient {
         },
         onError: (err) {
           AppLogger.log('[WebSocketClient] Stream error: $err', ip, port);
-          _controller?.addError(err);
+          // Do not bubble error to bloc so UI stays on dashboard
           _scheduleReconnect();
         },
         onDone: () {
           final code = _channel?.closeCode;
           final reason = _channel?.closeReason;
           AppLogger.log('[WebSocketClient] Connection closed. Code: $code, Reason: $reason', ip, port);
-          _controller?.addError('Connection closed (Code: $code, Reason: $reason)');
+          // Do not bubble error to bloc so UI stays on dashboard
           _scheduleReconnect();
         },
       );
@@ -105,7 +105,7 @@ class WebSocketClient {
       _pingTimer = Timer.periodic(const Duration(seconds: 10), (_) => sendPing());
     } catch (e) {
       AppLogger.log('[WebSocketClient] Connection failed: $e', ip, port);
-      _controller?.addError(e);
+      // Do not bubble error to bloc
       _scheduleReconnect();
     }
   }

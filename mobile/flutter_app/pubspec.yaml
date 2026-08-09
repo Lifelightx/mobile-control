@@ -38,13 +38,15 @@ dependencies:
   dio: ^5.4.0
   web_socket_channel: ^2.4.1
   flutter_secure_storage: ^9.0.0
-  local_auth: ^2.1.8
+  local_auth: ^3.0.2
   nsd: ^2.1.0
   uuid: ^3.0.7
   app_links: ^7.0.0
   xterm: ^4.0.0
   intl: ^0.20.3
   flutter_local_notifications: ^17.0.0
+  http: ^1.6.0
+  crypto: ^3.0.7
 
 dev_dependencies:
   flutter_test:

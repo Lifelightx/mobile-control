@@ -21,6 +21,7 @@ import { startNotificationEngine, eventBus } from './notifications/index';
 import { NormalizedNotification } from './notifications/normalizer';
 import { getMissedNotifications, markNotificationAcknowledged } from './notifications/history';
 import { shouldDeliverNotification } from './notifications/filter';
+import { handleUnlockRequest } from './auth/unlockService';
 
 dotenv.config();
 
@@ -119,6 +120,39 @@ async function main() {
     const body = request.body as { message: string };
     console.log(`[Mobile Log] ${body.message}`);
     return { success: true };
+  });
+
+  // Phase 13: Biometric Laptop Unlock endpoint
+  app.post('/auth/unlock', {
+    onRequest: [async (request: any, reply: any) => {
+      try {
+        await request.jwtVerify();
+        const payload = request.user as { deviceId: string };
+        const valid = await verifyDevice(payload.deviceId);
+        if (!valid) throw new Error('Device not paired');
+      } catch (err) {
+        reply.status(401).send({ error: 'Unauthorized device' });
+      }
+    }]
+  }, async (request: any, reply: any) => {
+    try {
+      // Extract the raw JWT token from the Authorization header
+      const authHeader = request.headers['authorization'] ?? '';
+      const jwtToken = authHeader.replace('Bearer ', '');
+      const body = request.body as {
+        deviceId: string;
+        timestamp: number;
+        nonce: string;
+        signature: string;
+      };
+      const result = await handleUnlockRequest(body, jwtToken);
+      if (!result.success) {
+        return reply.status(403).send({ error: result.error });
+      }
+      return { success: true };
+    } catch (err: any) {
+      return reply.status(500).send({ error: 'Internal server error', details: err.message });
+    }
   });
 
   // Authenticated route for static system info
