@@ -34,6 +34,18 @@ pub async fn run_server(
     }
 
     let listener = UnixListener::bind(SOCKET_PATH)?;
+    
+    // Allow any user (like the Node.js agent) to connect to this socket
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Ok(metadata) = std::fs::metadata(SOCKET_PATH) {
+            let mut perms = metadata.permissions();
+            perms.set_mode(0o666);
+            let _ = std::fs::set_permissions(SOCKET_PATH, perms);
+        }
+    }
+    
     info!("[IPC] Listening on {}", SOCKET_PATH);
 
     loop {
