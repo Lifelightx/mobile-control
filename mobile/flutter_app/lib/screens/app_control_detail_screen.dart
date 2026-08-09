@@ -144,7 +144,7 @@ class _AppControlDetailScreenState extends State<AppControlDetailScreen> {
         elevation: 0,
         title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
       ),
-      body: SingleChildScrollView(
+      body: SafeArea(child: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
@@ -292,7 +292,7 @@ class _AppControlDetailScreenState extends State<AppControlDetailScreen> {
             ),
           ],
         ),
-      ),
+      )),
     );
   }
 

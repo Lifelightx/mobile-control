@@ -87,7 +87,7 @@ class _UnlockScreenState extends State<UnlockScreen>
         ),
         iconTheme: const IconThemeData(color: Colors.white),
       ),
-      body: Center(
+      body: SafeArea(child: Center(
         child: Padding(
           padding: const EdgeInsets.all(32),
           child: Column(
@@ -264,7 +264,7 @@ class _UnlockScreenState extends State<UnlockScreen>
             ],
           ),
         ),
-      ),
+      )),
     );
   }
 }

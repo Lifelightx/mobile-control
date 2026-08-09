@@ -199,7 +199,7 @@ class _TrackpadScreenState extends State<TrackpadScreen> {
           const SizedBox(width: 8),
         ],
       ),
-      body: Column(
+      body: SafeArea(child: Column(
         children: [
           // ── Trackpad surface ──────────────────────────────────────────
           Expanded(
@@ -259,7 +259,7 @@ class _TrackpadScreenState extends State<TrackpadScreen> {
               ),
             ),
         ],
-      ),
+      )),
     );
   }
 

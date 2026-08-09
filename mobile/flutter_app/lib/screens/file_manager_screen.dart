@@ -139,7 +139,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
           )
         ],
       ),
-      body: Column(
+      body: SafeArea(child: Column(
         children: [
           Container(
             padding: const EdgeInsets.all(12),
@@ -210,7 +210,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
                   ),
           ),
         ],
-      ),
+      )),
     );
   }
 }

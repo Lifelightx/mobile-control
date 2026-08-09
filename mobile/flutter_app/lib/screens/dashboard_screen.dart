@@ -47,7 +47,7 @@ class DashboardScreen extends StatelessWidget {
         if (state is! DashboardActive) {
           return const Scaffold(
             backgroundColor: Color(0xFF1E1E2E),
-            body: Center(child: CircularProgressIndicator(color: Color(0xFF8839EF))),
+            body: SafeArea(child: Center(child: CircularProgressIndicator(color: Color(0xFF8839EF)))),
           );
         }
 

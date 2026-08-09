@@ -114,78 +114,80 @@ class _DockerScreenState extends State<DockerScreen> {
           )
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Colors.cyanAccent))
-          : ListView.builder(
-              padding: const EdgeInsets.all(12),
-              itemCount: _containers.length,
-              itemBuilder: (ctx, idx) {
-                final container = _containers[idx] as Map<String, dynamic>;
-                final names = (container['names'] as List<dynamic>?)?.join(', ') ?? 'Unknown';
-                final cleanName = names.startsWith('/') ? names.substring(1) : names;
-                final state = container['state'] as String? ?? 'unknown';
-                final status = container['status'] as String? ?? '';
-                final isRunning = state.toLowerCase() == 'running';
-                final id = container['id'] as String;
+      body: SafeArea(
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator(color: Colors.cyanAccent))
+            : ListView.builder(
+                padding: const EdgeInsets.all(12),
+                itemCount: _containers.length,
+                itemBuilder: (ctx, idx) {
+                  final container = _containers[idx] as Map<String, dynamic>;
+                  final names = (container['names'] as List<dynamic>?)?.join(', ') ?? 'Unknown';
+                  final cleanName = names.startsWith('/') ? names.substring(1) : names;
+                  final state = container['state'] as String? ?? 'unknown';
+                  final status = container['status'] as String? ?? '';
+                  final isRunning = state.toLowerCase() == 'running';
+                  final id = container['id'] as String;
 
-                return Card(
-                  color: const Color(0xFF1E293B),
-                  margin: const EdgeInsets.only(bottom: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    leading: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: isRunning ? Colors.green.withValues(alpha: 0.2) : Colors.red.withValues(alpha: 0.2),
-                        shape: BoxShape.circle,
+                  return Card(
+                    color: const Color(0xFF1E293B),
+                    margin: const EdgeInsets.only(bottom: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    child: ListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      leading: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: isRunning ? Colors.green.withValues(alpha: 0.2) : Colors.red.withValues(alpha: 0.2),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.directions_boat_rounded,
+                          color: isRunning ? Colors.greenAccent : Colors.redAccent,
+                        ),
                       ),
-                      child: Icon(
-                        Icons.directions_boat_rounded,
-                        color: isRunning ? Colors.greenAccent : Colors.redAccent,
+                      title: Text(cleanName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      subtitle: Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(status, style: const TextStyle(color: Colors.white54, fontSize: 12)),
                       ),
-                    ),
-                    title: Text(cleanName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                    subtitle: Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text(status, style: const TextStyle(color: Colors.white54, fontSize: 12)),
-                    ),
-                    trailing: PopupMenuButton<String>(
-                      icon: const Icon(Icons.more_vert, color: Colors.white54),
-                      color: const Color(0xFF0F172A),
-                      onSelected: (val) {
-                        if (val == 'logs') {
-                          _showLogs(id, cleanName);
-                        } else {
-                          _performAction(val, id, cleanName);
-                        }
-                      },
-                      itemBuilder: (ctx) => [
-                        if (!isRunning)
+                      trailing: PopupMenuButton<String>(
+                        icon: const Icon(Icons.more_vert, color: Colors.white54),
+                        color: const Color(0xFF0F172A),
+                        onSelected: (val) {
+                          if (val == 'logs') {
+                            _showLogs(id, cleanName);
+                          } else {
+                            _performAction(val, id, cleanName);
+                          }
+                        },
+                        itemBuilder: (ctx) => [
+                          if (!isRunning)
+                            const PopupMenuItem(
+                              value: 'start',
+                              child: Text('Start', style: TextStyle(color: Colors.greenAccent)),
+                            ),
+                          if (isRunning) ...[
+                            const PopupMenuItem(
+                              value: 'stop',
+                              child: Text('Stop', style: TextStyle(color: Colors.redAccent)),
+                            ),
+                            const PopupMenuItem(
+                              value: 'restart',
+                              child: Text('Restart', style: TextStyle(color: Colors.orangeAccent)),
+                            ),
+                          ],
                           const PopupMenuItem(
-                            value: 'start',
-                            child: Text('Start', style: TextStyle(color: Colors.greenAccent)),
-                          ),
-                        if (isRunning) ...[
-                          const PopupMenuItem(
-                            value: 'stop',
-                            child: Text('Stop', style: TextStyle(color: Colors.redAccent)),
-                          ),
-                          const PopupMenuItem(
-                            value: 'restart',
-                            child: Text('Restart', style: TextStyle(color: Colors.orangeAccent)),
+                            value: 'logs',
+                            child: Text('Logs', style: TextStyle(color: Colors.cyanAccent)),
                           ),
                         ],
-                        const PopupMenuItem(
-                          value: 'logs',
-                          child: Text('Logs', style: TextStyle(color: Colors.cyanAccent)),
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
-                );
-              },
-            ),
+                  );
+                },
+              ),
+      ),
     );
   }
 }

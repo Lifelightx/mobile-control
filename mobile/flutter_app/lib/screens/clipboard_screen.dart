@@ -84,11 +84,12 @@ class _ClipboardScreenState extends State<ClipboardScreen> {
           )
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Colors.orangeAccent))
-          : Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
+      body: SafeArea(
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator(color: Colors.orangeAccent))
+            : Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
                 children: [
                   Expanded(
                     child: Container(
@@ -143,6 +144,7 @@ class _ClipboardScreenState extends State<ClipboardScreen> {
                 ],
               ),
             ),
+      ),
     );
   }
 }

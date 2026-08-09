@@ -326,7 +326,7 @@ class _AppsScreenState extends State<AppsScreen> with SingleTickerProviderStateM
           ],
         ),
       ),
-      body: TabBarView(
+      body: SafeArea(child: TabBarView(
         controller: _tabController,
         children: [
           // TAB 1: Installed Apps Grid (3 per row)
@@ -335,7 +335,7 @@ class _AppsScreenState extends State<AppsScreen> with SingleTickerProviderStateM
           // TAB 2: Running Processes List
           _buildRunningProcessesTab(),
         ],
-      ),
+      )),
     );
   }
 

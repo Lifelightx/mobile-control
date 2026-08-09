@@ -185,42 +185,44 @@ class _AutomationScreenState extends State<AutomationScreen> {
         onPressed: _addRuleDialog,
         child: const Icon(Icons.add),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Colors.purpleAccent))
-          : _rules.isEmpty
-              ? const Center(child: Text('No automations created yet.', style: TextStyle(color: Colors.white54)))
-              : ListView.builder(
-                  padding: const EdgeInsets.all(12),
-                  itemCount: _rules.length,
-                  itemBuilder: (ctx, idx) {
-                    final rule = _rules[idx];
-                    final isEnabled = rule['enabled'] == 1;
+      body: SafeArea(
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator(color: Colors.purpleAccent))
+            : _rules.isEmpty
+                ? const Center(child: Text('No automations created yet.', style: TextStyle(color: Colors.white54)))
+                : ListView.builder(
+                    padding: const EdgeInsets.all(12),
+                    itemCount: _rules.length,
+                    itemBuilder: (ctx, idx) {
+                      final rule = _rules[idx];
+                      final isEnabled = rule['enabled'] == 1;
 
-                    return Card(
-                      color: const Color(0xFF1E293B),
-                      margin: const EdgeInsets.only(bottom: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      child: ListTile(
-                        title: Text(rule['name'], style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                        subtitle: Text('IF ${rule['trigger_type']} THEN ${rule['action_type']}', style: const TextStyle(color: Colors.white54, fontSize: 12)),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Switch(
-                              value: isEnabled,
-                              activeColor: Colors.purpleAccent,
-                              onChanged: (val) => _toggleRule(rule['id'], val),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.delete, color: Colors.redAccent),
-                              onPressed: () => _deleteRule(rule['id']),
-                            ),
-                          ],
+                      return Card(
+                        color: const Color(0xFF1E293B),
+                        margin: const EdgeInsets.only(bottom: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        child: ListTile(
+                          title: Text(rule['name'], style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                          subtitle: Text('IF ${rule['trigger_type']} THEN ${rule['action_type']}', style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Switch(
+                                value: isEnabled,
+                                activeColor: Colors.purpleAccent,
+                                onChanged: (val) => _toggleRule(rule['id'], val),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete, color: Colors.redAccent),
+                                onPressed: () => _deleteRule(rule['id']),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                    );
-                  },
-                ),
+                      );
+                    },
+                  ),
+      ),
     );
   }
 }
