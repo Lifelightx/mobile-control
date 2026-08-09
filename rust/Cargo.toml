@@ -1,0 +1,22 @@
+[package]
+name = "devcontrol-input"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "devcontrol-input"
+path = "src/main.rs"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# uinput device creation
+uinput = "0.1"
+
+# Error handling
+anyhow = "1"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

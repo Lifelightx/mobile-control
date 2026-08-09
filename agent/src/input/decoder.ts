@@ -14,10 +14,14 @@ export interface InputPacket {
   timestamp: number;
   payloadLength: number;
   payload: Buffer;
+  /** Original raw bytes — used for passthrough to IPC without re-encoding */
+  rawBuffer: Buffer;
 }
 
 export class BinaryDecoder {
   static readonly HEADER_SIZE = 12;
+
+  private lastSequence = -1;
 
   /**
    * Decodes a binary packet buffer into an InputPacket object.
@@ -27,31 +31,47 @@ export class BinaryDecoder {
    * [2-3]  uint16 Sequence (Big Endian)
    * [4-7]  uint32 Timestamp (Big Endian)
    * [8-11] uint32 Payload Length (Big Endian)
+   *
+   * Returns null for duplicate or out-of-order packets (discard per phase 17 spec).
+   * Keyboard events always pass through regardless of ordering.
    */
-  static decode(buffer: Buffer): InputPacket {
-    if (buffer.length < this.HEADER_SIZE) {
-      throw new Error(`Packet too small: ${buffer.length} bytes. Expected at least ${this.HEADER_SIZE} bytes.`);
+  decode(buffer: Buffer): InputPacket | null {
+    if (buffer.length < BinaryDecoder.HEADER_SIZE) {
+      throw new Error(`Packet too small: ${buffer.length} bytes. Expected at least ${BinaryDecoder.HEADER_SIZE} bytes.`);
     }
 
-    const version = buffer.readUInt8(0);
-    const opcode = buffer.readUInt8(1) as Opcode;
-    const sequence = buffer.readUInt16BE(2);
-    const timestamp = buffer.readUInt32BE(4);
+    const version      = buffer.readUInt8(0);
+    const opcode       = buffer.readUInt8(1) as Opcode;
+    const sequence     = buffer.readUInt16BE(2);
+    const timestamp    = buffer.readUInt32BE(4);
     const payloadLength = buffer.readUInt32BE(8);
 
-    if (buffer.length < this.HEADER_SIZE + payloadLength) {
-      throw new Error(`Incomplete packet: expected ${this.HEADER_SIZE + payloadLength} bytes, got ${buffer.length}`);
+    if (buffer.length < BinaryDecoder.HEADER_SIZE + payloadLength) {
+      throw new Error(`Incomplete packet: expected ${BinaryDecoder.HEADER_SIZE + payloadLength} bytes, got ${buffer.length}`);
     }
 
-    const payload = buffer.subarray(this.HEADER_SIZE, this.HEADER_SIZE + payloadLength);
+    // Discard duplicate or out-of-order for lossy channels (mouse/scroll)
+    if (this.lastSequence !== -1) {
+      const expected = (this.lastSequence + 1) % 65536;
+      if (sequence !== expected) {
+        const isKeyboard = opcode === Opcode.KEY_DOWN || opcode === Opcode.KEY_UP;
+        if (!isKeyboard) {
+          return null; // Discard per spec (Phase 17)
+        }
+      }
+    }
+    this.lastSequence = sequence;
 
-    return {
-      version,
-      opcode,
-      sequence,
-      timestamp,
-      payloadLength,
-      payload,
-    };
+    const payload   = buffer.subarray(BinaryDecoder.HEADER_SIZE, BinaryDecoder.HEADER_SIZE + payloadLength);
+    const rawBuffer = buffer.subarray(0, BinaryDecoder.HEADER_SIZE + payloadLength);
+
+    return { version, opcode, sequence, timestamp, payloadLength, payload, rawBuffer };
+  }
+
+  /** Static convenience — no sequence tracking. */
+  static decode(buffer: Buffer): InputPacket {
+    const result = new BinaryDecoder().decode(buffer);
+    if (!result) throw new Error('Unexpected null from static decode');
+    return result;
   }
 }

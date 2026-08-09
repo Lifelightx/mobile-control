@@ -83,3 +83,8 @@ mobile/flutter_app/flutter_export_environment.sh
 # Shared
 shared/node_modules/
 shared/dist/
+
+# Rust (Daemon)
+rust/target/
+rust/**/*.rs.bk
+rust/Cargo.lock

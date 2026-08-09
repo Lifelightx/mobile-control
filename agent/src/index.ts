@@ -22,6 +22,9 @@ import { NormalizedNotification } from './notifications/normalizer';
 import { getMissedNotifications, markNotificationAcknowledged } from './notifications/history';
 import { shouldDeliverNotification } from './notifications/filter';
 import { handleUnlockRequest } from './auth/unlockService';
+import { startScheduler } from './input/scheduler';
+import { getIpcClient } from './input/ipc';
+import { handleInputPacket } from './input/handler';
 
 dotenv.config();
 
@@ -282,6 +285,43 @@ async function main() {
     });
   });
 
+  // ── Binary input WebSocket ────────────────────────────────────────────────
+  // Accepts raw binary frames from the Flutter gesture engine.
+  // JWT token passed as query param: /ws/input?token=...
+  // No JSON, no text, pure binary.
+  app.get('/ws/input', { websocket: true }, (socket, req) => {
+    const query = req.query as { token?: string };
+    const token = query.token;
+
+    if (!token) {
+      socket.close(1008, 'Unauthorized: Missing token');
+      return;
+    }
+
+    let deviceId = 'unknown';
+    try {
+      const decoded = app.jwt.verify(token) as { deviceId: string; deviceName: string };
+      deviceId = decoded.deviceId;
+      console.log(`[InputWS] Connected: ${decoded.deviceName} (${deviceId})`);
+    } catch {
+      socket.close(1008, 'Unauthorized: Invalid token');
+      return;
+    }
+
+    socket.on('message', (data: Buffer) => {
+      // Each WebSocket frame = exactly one binary InputPacket
+      handleInputPacket(data);
+    });
+
+    socket.on('error', (err: Error) => {
+      console.error(`[InputWS] Error for ${deviceId}:`, err.message);
+    });
+
+    socket.on('close', () => {
+      console.log(`[InputWS] Disconnected: ${deviceId}`);
+    });
+  });
+
   // Start fastify server
   const port = Number(process.env.PORT) || 3000;
   const host = process.env.HOST || '0.0.0.0';
@@ -300,6 +340,13 @@ async function main() {
 
   // Start Notification Engine
   startNotificationEngine();
+
+  // ── Input Subsystem ────────────────────────────────────────────────────────
+  // Pre-connect IPC client so it's ready before the first packet arrives
+  getIpcClient();
+  // Start 240 Hz scheduler for mouse/scroll coalescing
+  startScheduler();
+  console.log('[Server] Input subsystem ready.');
 }
 
 // Graceful shutdown

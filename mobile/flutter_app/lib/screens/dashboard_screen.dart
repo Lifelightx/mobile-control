@@ -10,6 +10,7 @@ import 'automation_screen.dart';
 import 'notifications_screen.dart';
 import 'clipboard_screen.dart';
 import 'unlock_screen.dart';
+import 'trackpad_screen.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
@@ -378,6 +379,29 @@ class DashboardScreen extends StatelessWidget {
                             context,
                             MaterialPageRoute(
                               builder: (_) => UnlockScreen(
+                                ip: state.ip,
+                                port: state.port,
+                                token: token,
+                              ),
+                            ),
+                          );
+                        }
+                      },
+                    ),
+
+                    // Item 9: Trackpad
+                    _buildToolGridCard(
+                      context: context,
+                      icon: Icons.touch_app_rounded,
+                      name: 'Trackpad',
+                      color: const Color(0xFF8839EF),
+                      onTap: () async {
+                        final token = await ApiClient().getToken();
+                        if (token != null && context.mounted) {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => TrackpadScreen(
                                 ip: state.ip,
                                 port: state.port,
                                 token: token,
