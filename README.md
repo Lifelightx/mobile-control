@@ -1,104 +1,116 @@
-# Developer Control Hub
-
-Developer Control Hub is a secure LAN-based desktop management platform that allows a mobile application to monitor and control a developer's workstation. 
-
-This repository contains the Phase 1 (Foundation) implementation of the desktop agent and the mobile application.
+<div align="center">
+  <h1>🚀 Developer Control Hub (DevControl)</h1>
+  <p><b>A secure, extensible LAN-based desktop management platform for developers.</b></p>
+  <p>
+    <a href="https://github.com/your-username/devcontrol/actions"><img src="https://img.shields.io/badge/build-passing-brightgreen" alt="Build Status"></a>
+    <a href="https://flutter.dev"><img src="https://img.shields.io/badge/Flutter-3.10+-blue.svg" alt="Flutter"></a>
+    <a href="https://nodejs.org/"><img src="https://img.shields.io/badge/Node.js-20+-green.svg" alt="Node.js"></a>
+    <a href="https://rust-lang.org"><img src="https://img.shields.io/badge/Rust-Ready-orange.svg" alt="Rust"></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
+  </p>
+</div>
 
 ---
 
-## Repository Structure
+**Developer Control Hub (DevControl)** is a secure LAN-based remote control and monitoring application designed specifically for developers. Instead of generic desktop streaming, DevControl focuses on automation, system monitoring, process management, terminal access, and direct Docker control natively from your mobile phone.
 
+## ✨ Key Features
+
+- 🔍 **Auto-Discovery & Secure Pairing**: Zero-config mDNS discovery on your LAN. Securely pair using 8-character codes and JWT-based authentication.
+- 📊 **Real-time System Monitoring**: Live CPU, RAM, Battery, and Uptime telemetry with animated gauge cards.
+- 📱 **Interactive Terminal**: Full color-coded, interactive shell sessions (`bash`/`zsh`) directly from your phone over WebSockets.
+- 🐳 **Docker Management**: View, start, stop, and restart containers, plus tail live logs directly from the UI.
+- 📁 **File Manager**: Browse, upload, download, edit, and move files right on your mobile device.
+- 🔔 **Notification Mirroring**: Natively intercept Linux Desktop notifications (via D-Bus) and mirror them directly to your phone.
+- ⚙️ **Automation Engine**: Define custom rules (e.g., CPU > 90%) to trigger specific shell scripts or alerts automatically.
+- 📋 **Clipboard Sync**: Bi-directional clipboard syncing between your mobile device and your workstation.
+- 🖱️ **Remote Input Subsystem (Rust)**: High-performance virtual mouse and keyboard device emulation via Linux `uinput`.
+
+## 🏗️ Architecture Overview
+
+The system is broken down into three modular components:
+
+```mermaid
+graph TD
+    Mobile[Flutter Mobile App] <-->|REST + WebSocket| NodeAgent[Node.js Desktop Agent]
+    NodeAgent <-->|Unix Domain Socket| RustDaemon[Rust Input Daemon]
+    NodeAgent <-->|Native APIs| OS[System OS / Docker / Files]
+    RustDaemon -->|/dev/uinput| Input[Linux Input Subsystem]
 ```
+
+## 📂 Project Structure
+
+```text
 saturday/
 ├── agent/                # Desktop Agent (Fastify, TypeScript, SQLite)
-│   ├── src/
-│   │   ├── auth/         # Pairing, JWT authentication
-│   │   ├── database/     # SQLite DB setup
-│   │   ├── services/     # mDNS publishing & hardware stats
-│   │   ├── utils/        # Networking helpers
-│   │   └── index.ts      # Main Fastify/WS server
-│   ├── package.json
-│   └── tsconfig.json
-├── mobile/               # Mobile Application (Flutter, Dart)
-│   └── flutter_app/      # Flutter application files
-│       ├── lib/
-│       │   ├── bloc/     # BLoC state management
-│       │   ├── screens/  # Material 3 screens (Pairing, Dashboard)
-│       │   └── main.dart # App entry gate
-│       └── pubspec.yaml
-└── README.md
+├── mobile/               # Mobile Application (Flutter, Dart, Material 3)
+├── rust/                 # High-performance Input Daemon (Rust, uinput)
+├── shared/               # Shared API types and contracts
+└── docs/                 # Project documentation and plans
 ```
 
----
-
-## Getting Started
+## 🚀 Getting Started
 
 ### Prerequisites
-- Node.js (v20+ recommended, tested on v24.14.0)
-- Flutter (v3.10+ recommended, tested on v3.38.6)
 
----
+* **Node.js** (v20+ recommended)
+* **Flutter** (v3.10+ recommended)
+* **Rust** (Optional, for the remote input daemon)
 
 ### 1. Launch the Desktop Agent
 
-Initialize the Desktop Agent configuration, start mDNS network discovery, and run the REST/WebSocket gateway:
+Initialize the agent to start mDNS discovery and the REST/WebSocket gateway:
 
 ```bash
 cd agent
-# Install dependencies (already completed)
 npm install
-
-# Run the agent in development watch mode
 npm run dev
-
-# Or build and start for production
-npm run build
-npm start
+# Or for production: npm run build && npm start
 ```
 
-When started, the agent will:
-1. Spin up an HTTP server on `http://0.0.0.0:3000`.
-2. Generate and output a secure **8-character pairing code** to the console.
-3. Start advertising the service as `_devcontrol._tcp` using mDNS.
-4. Stream live CPU/RAM/Battery metrics to authenticated WebSocket clients.
-
----
+The agent will output a secure **8-character pairing code**. It starts broadcasting as `_devcontrol._tcp` using mDNS.
 
 ### 2. Launch the Mobile Client
 
-Run the Flutter client on your mobile device or emulator:
+Run the Flutter client on your mobile device (ensure it is on the same local network):
 
 ```bash
 cd mobile/flutter_app
-
-# Fetch dependencies (already completed)
 flutter pub get
-
-# Run the app
 flutter run
 ```
 
-#### How it connects:
-1. **Auto-Discovery**: The app automatically scans the local network using mDNS and lists discovered workstations.
-2. **Pairing**: Tap the discovered host, enter the pairing code displayed in the agent terminal, and pair. The app will securely persist your pairing token.
-3. **Manual Override**: If discovery is disabled on your network, tap "Configure Manually" to enter the IP, Port, and Pairing Code.
-4. **Live Dashboard**: Once paired, the app redirects to the real-time telemetry dashboard.
-5. **Auto-Reconnect**: The next time you open the app, it automatically attempts to re-authenticate and restore connection to your saved workstation.
+* **Auto-Discovery**: The app automatically finds your workstation.
+* **Pair**: Tap your host, enter the pairing code, and access the dashboard.
+* **Auto-Reconnect**: On subsequent launches, the app automatically attempts to reconnect to your workstation seamlessly.
 
----
+### 3. (Optional) Run the Rust Input Daemon
 
-## Testing
+For virtual mouse and keyboard control capabilities:
 
-To run the automated tests:
-
-### Test Desktop Agent
 ```bash
-cd agent
-npm run test
+cd rust
+cargo build --release
+sudo mkdir -p /run/devcontrol && sudo chown $USER /run/devcontrol
+./target/release/devcontrol-input
 ```
 
-### Test Flutter Client
+*(See [rust/README.md](./rust/README.md) for background systemd setup instructions).*
+
+## 🧪 Testing
+
 ```bash
-cd mobile/flutter_app
-flutter test
+# Test Desktop Agent
+cd agent && npm run test
+
+# Test Flutter Client
+cd mobile/flutter_app && flutter test
 ```
+
+## 🗺️ Roadmap & Documentation
+
+To see our future plans (Biometric Unlock, Git Manager, Project Launcher), view the detailed [Project Plan](plan.md) and [Completed Features](completed.md).
+
+## 📄 License
+
+This project is licensed under the [MIT License](LICENSE).
