@@ -2,13 +2,14 @@ import sq from 'sqlite3';
 import { open, Database } from 'sqlite';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 
 let db: Database | null = null;
 
 export async function getDb(): Promise<Database> {
   if (db) return db;
 
-  const dbDir = path.join(__dirname, '../../data');
+  const dbDir = path.join(os.homedir(), '.devcontrol', 'data');
   if (!fs.existsSync(dbDir)) {
     fs.mkdirSync(dbDir, { recursive: true });
   }

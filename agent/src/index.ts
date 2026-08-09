@@ -342,6 +342,22 @@ async function main() {
   startNotificationEngine();
 
   // ── Input Subsystem ────────────────────────────────────────────────────────
+  
+  // Spawn the Rust daemon automatically
+  const { spawn } = require('child_process');
+  const daemonPath = path.join(__dirname, '../bin/devcontrol-input');
+  
+  // First ensure the socket directory exists (requires sudo if running as non-root)
+  // Usually the udev rules and socket dir /run/devcontrol are configured by the user.
+  // We'll just spawn it and let it run.
+  const daemon = spawn(daemonPath, [], { stdio: 'inherit' });
+  daemon.on('error', (err: any) => {
+    console.warn('[Server] Could not start Rust input daemon automatically. Ensure it is installed and /run/devcontrol exists.', err.message);
+  });
+  daemon.on('exit', (code: any) => {
+    console.warn(`[Server] Rust daemon exited with code ${code}`);
+  });
+
   // Pre-connect IPC client so it's ready before the first packet arrives
   getIpcClient();
   // Start 240 Hz scheduler for mouse/scroll coalescing
