@@ -7,7 +7,7 @@ class BluetoothPlatform {
 
   static Future<List<Map<String, dynamic>>> getPairedDevices() async {
     final List<dynamic> devices = await _methodChannel.invokeMethod('getPairedDevices');
-    return devices.cast<Map<String, dynamic>>();
+    return devices.map((e) => Map<String, dynamic>.from(e as Map)).toList();
   }
 
   static Future<bool> connect(String address) async {

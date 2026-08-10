@@ -7,7 +7,7 @@ import 'transport.dart';
 class TransportManager {
   final Map<TransportType, Transport> _transports = {};
   
-  final _dataController = StreamController<Map<String, dynamic>>.broadcast();
+  StreamController<Map<String, dynamic>> _dataController = StreamController<Map<String, dynamic>>.broadcast();
   Stream<Map<String, dynamic>> get onData => _dataController.stream;
 
   TransportType? _activeType;
@@ -87,10 +87,13 @@ class TransportManager {
   }
 
   void dispose() {
-    _dataController.close();
     for (var t in _transports.values) {
       t.disconnect();
     }
+    _transports.clear();
+    _activeType = null;
+    _dataController.close();
+    _dataController = StreamController<Map<String, dynamic>>.broadcast();
   }
 }
 

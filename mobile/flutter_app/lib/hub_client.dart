@@ -221,11 +221,17 @@ class HubClient {
     final devices = await BluetoothPlatform.getPairedDevices();
     if (devices.isEmpty) throw Exception("No paired Bluetooth devices found on your phone. Please pair with the laptop in Android Settings first.");
     
+    List<String> errors = [];
+
     for (var device in devices) {
+      final name = device['name'] as String? ?? 'Unknown';
       try {
         final address = device['address'] as String;
         final connected = await BluetoothPlatform.connect(address);
-        if (!connected) continue;
+        if (!connected) {
+          errors.add("$name: Connection refused.");
+          continue;
+        }
 
         final completer = Completer<String>();
         StreamSubscription? sub;
@@ -236,7 +242,6 @@ class HubClient {
             if (type == 'data') {
               final data = event['data'] as Uint8List;
               try {
-                // Ignore length header, payload starts at index 4
                 if (data.length > 4) {
                   final payload = data.sublist(4);
                   final message = utf8.decode(payload);
@@ -244,17 +249,16 @@ class HubClient {
                   if (parsed['type'] == 'pair_success') {
                     completer.complete(parsed['token']);
                   } else if (parsed['type'] == 'pair_failure') {
-                    completer.completeError(parsed['error'] ?? 'Unknown error');
+                    completer.completeError(parsed['error'] ?? 'Server rejected pairing');
                   }
                 }
               } catch (e) {}
             } else if (type == 'disconnected') {
-              if (!completer.isCompleted) completer.completeError("Bluetooth socket disconnected during pairing");
+              if (!completer.isCompleted) completer.completeError("Socket disconnected");
             }
           }
         });
         
-        // Frame sending helper
         void sendFrame(String msg) {
           final payload = utf8.encode(msg) as Uint8List;
           final header = ByteData(4);
@@ -275,15 +279,14 @@ class HubClient {
         final token = await completer.future.timeout(const Duration(seconds: 10));
         sub.cancel();
         
-        // Close raw socket so the actual transport manager can cleanly open it
         await BluetoothPlatform.disconnect();
-        
         return token;
       } catch (e) {
+         errors.add("$name: $e");
          await BluetoothPlatform.disconnect();
       }
     }
-    throw Exception("Bluetooth Native Pairing failed. Could not negotiate with any bonded devices.");
+    throw Exception("Bluetooth Pairing Failed:\n" + errors.join("\n"));
   }
 
   void disconnect() {
