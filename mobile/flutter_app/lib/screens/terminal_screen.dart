@@ -1,8 +1,9 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:xterm/xterm.dart';
-import '../api_client.dart';
+import '../transport/transport_manager.dart';
 
 class TerminalScreen extends StatefulWidget {
   final String ip;
@@ -21,10 +22,9 @@ class TerminalScreen extends StatefulWidget {
 }
 
 class _TerminalScreenState extends State<TerminalScreen> {
-  final ApiClient _apiClient = ApiClient();
   final Terminal _terminal = Terminal();
   
-  WebSocketChannel? _channel;
+  StreamSubscription? _subscription;
   String? _sessionId;
   bool _isLoading = true;
 
@@ -33,35 +33,55 @@ class _TerminalScreenState extends State<TerminalScreen> {
     super.initState();
     _initTerminal();
     
-    // When the user types in the terminal, send it to the websocket
+    // When the user types in the terminal, send it over unified transport
     _terminal.onOutput = (String data) {
-      if (_channel != null) {
-        _channel!.sink.add(jsonEncode({
-          'type': 'input',
+      if (_sessionId != null) {
+        transportManager.send(utf8.encode(jsonEncode({
+          'type': 'terminal_input',
+          'id': _sessionId,
           'data': data,
-        }));
+        })));
       }
     };
     
     _terminal.onResize = (int width, int height, int pixelWidth, int pixelHeight) {
-      if (_channel != null) {
-        _channel!.sink.add(jsonEncode({
-          'type': 'resize',
+      if (_sessionId != null) {
+        transportManager.send(utf8.encode(jsonEncode({
+          'type': 'terminal_resize',
+          'id': _sessionId,
           'cols': width,
           'rows': height,
-        }));
+        })));
       }
     };
+
+    _subscription = transportManager.onData.listen((event) {
+      try {
+        final dataBytes = event['data'] as Uint8List;
+        final message = utf8.decode(dataBytes);
+        final parsed = jsonDecode(message);
+        
+        if (parsed['type'] == 'terminal_session') {
+          setState(() {
+            _sessionId = parsed['id'];
+            _isLoading = false;
+          });
+        } else if (parsed['type'] == 'terminal_output' && parsed['id'] == _sessionId) {
+          _terminal.write(parsed['data']);
+        }
+      } catch (e) {
+        // ignore parse errors
+      }
+    });
   }
 
-  Future<void> _initTerminal() async {
+  void _initTerminal() {
     try {
-      final id = await _apiClient.createTerminalSession(widget.ip, widget.port, widget.token);
-      setState(() {
-        _sessionId = id;
-        _isLoading = false;
-      });
-      _connectWebSocket(id);
+      transportManager.send(utf8.encode(jsonEncode({
+         'type': 'terminal_start',
+         'cols': 80,
+         'rows': 24,
+      })));
     } catch (e) {
       setState(() => _isLoading = false);
       if (mounted) {
@@ -70,33 +90,14 @@ class _TerminalScreenState extends State<TerminalScreen> {
     }
   }
 
-  void _connectWebSocket(String id) {
-    final wsUrl = 'ws://${widget.ip}:${widget.port}/terminal/ws/$id?token=${widget.token}';
-    _channel = WebSocketChannel.connect(Uri.parse(wsUrl));
-
-    _channel!.stream.listen(
-      (message) {
-        try {
-          final data = jsonDecode(message);
-          if (data['type'] == 'data') {
-            _terminal.write(data['data']);
-          }
-        } catch (e) {}
-      },
-      onDone: () {
-        _terminal.write('\r\n[Connection Closed]\r\n');
-      },
-      onError: (err) {
-        _terminal.write('\r\n[Connection Error: $err]\r\n');
-      },
-    );
-  }
-
   @override
   void dispose() {
-    _channel?.sink.close();
+    _subscription?.cancel();
     if (_sessionId != null) {
-      _apiClient.killTerminalSession(widget.ip, widget.port, widget.token, _sessionId!);
+      transportManager.send(utf8.encode(jsonEncode({
+        'type': 'terminal_kill',
+        'id': _sessionId,
+      })));
     }
     super.dispose();
   }

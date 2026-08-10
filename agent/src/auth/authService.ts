@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import qrcode from 'qrcode-terminal';
+import { createVerifier } from 'fast-jwt';
 import { getDb, addAuditLog } from '../database/db';
 
 let jwtSecret: string | null = null;
@@ -97,4 +98,14 @@ export async function verifyDevice(deviceId: string): Promise<boolean> {
   const db = await getDb();
   const device = await db.get('SELECT id FROM devices WHERE id = ? AND status = ?', deviceId, 'paired');
   return !!device;
+}
+
+let jwtVerifier: any = null;
+
+export async function verifyToken(token: string): Promise<{ deviceId: string; deviceName: string }> {
+  if (!jwtVerifier) {
+    const secret = await getJwtSecret();
+    jwtVerifier = createVerifier({ key: secret });
+  }
+  return jwtVerifier(token);
 }

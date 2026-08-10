@@ -12,8 +12,10 @@ import { getLocalIpAddress } from './utils/network';
 import { getStaticInfo, getDynamicInfo } from './services/systemService';
 import { registerAppRoutes } from './routes/appRoutes';
 import { registerTerminalRoutes } from './routes/terminalRoutes';
+import { createSession, getSession, killSession } from './services/terminalService';
 import { registerFileRoutes } from './routes/fileRoutes';
 import { registerDockerRoutes } from './routes/dockerRoutes';
+import { listContainers, startContainer, stopContainer, restartContainer, getContainerLogs } from './services/dockerService';
 import { registerAutomationRoutes } from './routes/automationRoutes';
 import { registerClipboardRoutes } from './routes/clipboardRoutes';
 import { startAutomationEngine } from './services/automationService';
@@ -25,10 +27,13 @@ import { handleUnlockRequest } from './auth/unlockService';
 import { startScheduler } from './input/scheduler';
 import { getIpcClient } from './input/ipc';
 import { handleInputPacket } from './input/handler';
+import { transportManager } from './transport/transport-manager';
+import { WebSocketTransport } from './transport/wifi/websocket-transport';
+import { bluetoothServer } from './transport/bluetooth/bluetooth-server';
 
 dotenv.config();
 
-const app = Fastify({ logger: true });
+export const app = Fastify({ logger: true });
 
 // Setup schemas
 const pairSchema = z.object({
@@ -186,19 +191,100 @@ async function main() {
   await registerAutomationRoutes(app);
   await registerClipboardRoutes(app);
 
-  const activeSockets = new Set<{ deviceId: string, socket: any }>();
-
   // Subscribe to Notification Engine
   eventBus.on('new_notification', async (notification: NormalizedNotification) => {
     const payload = JSON.stringify({ type: 'notification', data: notification });
-    for (const client of activeSockets) {
-      if (client.socket.readyState === 1) { // 1 = OPEN
-        // Phase 8: Notification Filtering (Check per-device rules before delivery)
-        const deliver = await shouldDeliverNotification(client.deviceId, notification);
+    const transports = transportManager.getActiveTransports();
+    const sentTo = new Set<string>();
+    
+    for (const t of transports) {
+      if (t.isConnected() && !sentTo.has(t.deviceId)) {
+        const deliver = await shouldDeliverNotification(t.deviceId, notification);
         if (deliver) {
-          client.socket.send(payload);
+          transportManager.broadcast(t.deviceId, payload);
+          sentTo.add(t.deviceId);
         }
       }
+    }
+  });
+
+  // Global dynamic info interval
+  setInterval(async () => {
+    const transports = transportManager.getActiveTransports();
+    if (transports.length === 0) return;
+    
+    try {
+      const dynamicInfo = await getDynamicInfo();
+      transportManager.broadcastAll(JSON.stringify({ type: 'system_update', data: dynamicInfo }));
+    } catch (err) {
+      console.error('[System] Error fetching system updates:', err);
+    }
+  }, 2000);
+
+  // Handle incoming messages from transports
+  transportManager.onData(async (deviceId, message, transportType) => {
+    try {
+      const parsed = JSON.parse(message.toString());
+      if (parsed.type === 'ping') {
+        transportManager.broadcast(deviceId, JSON.stringify({ type: 'pong' }));
+      } else if (parsed.type === 'get_system_info') {
+        const staticInfo = await getStaticInfo();
+        const dynamicInfo = await getDynamicInfo();
+        transportManager.broadcast(deviceId, JSON.stringify({ type: 'system_info', data: { ...staticInfo, ...dynamicInfo } }));
+      } else if (parsed.type === 'sync_notifications') {
+        const since = parsed.timestamp || 0;
+        const missed = await getMissedNotifications(since);
+        transportManager.broadcast(deviceId, JSON.stringify({ type: 'sync_notifications_result', data: missed }));
+      } else if (parsed.type === 'ack_notification') {
+        const id = parsed.id;
+        if (id) await markNotificationAcknowledged(id);
+      } else if (parsed.type === 'terminal_start') {
+        const id = createSession(deviceId, parsed.cols || 80, parsed.rows || 24);
+        const session = getSession(id);
+        if (session) {
+          session.ptyProcess.onData((data: string) => {
+            transportManager.broadcast(deviceId, JSON.stringify({ type: 'terminal_output', id, data }));
+          });
+          transportManager.broadcast(deviceId, JSON.stringify({ type: 'terminal_session', id }));
+        }
+      } else if (parsed.type === 'terminal_input') {
+        const session = getSession(parsed.id);
+        if (session) session.ptyProcess.write(parsed.data);
+      } else if (parsed.type === 'terminal_resize') {
+        const session = getSession(parsed.id);
+        if (session) session.ptyProcess.resize(parsed.cols || 80, parsed.rows || 24);
+      } else if (parsed.type === 'terminal_kill') {
+        killSession(parsed.id, deviceId);
+      } else if (parsed.type === 'request') {
+        const requestId = parsed.requestId;
+        try {
+          if (parsed.action === 'docker.list_containers') {
+            const containers = await listContainers(parsed.payload?.all ?? true);
+            transportManager.broadcast(deviceId, JSON.stringify({ type: 'response', requestId, status: 'success', payload: { containers } }));
+          } else if (parsed.action === 'docker.start') {
+            await startContainer(parsed.payload.id);
+            addAuditLog('DOCKER_START', deviceId, `Started container ${parsed.payload.id}`);
+            transportManager.broadcast(deviceId, JSON.stringify({ type: 'response', requestId, status: 'success' }));
+          } else if (parsed.action === 'docker.stop') {
+            await stopContainer(parsed.payload.id);
+            addAuditLog('DOCKER_STOP', deviceId, `Stopped container ${parsed.payload.id}`);
+            transportManager.broadcast(deviceId, JSON.stringify({ type: 'response', requestId, status: 'success' }));
+          } else if (parsed.action === 'docker.restart') {
+            await restartContainer(parsed.payload.id);
+            addAuditLog('DOCKER_RESTART', deviceId, `Restarted container ${parsed.payload.id}`);
+            transportManager.broadcast(deviceId, JSON.stringify({ type: 'response', requestId, status: 'success' }));
+          } else if (parsed.action === 'docker.logs') {
+            const logs = await getContainerLogs(parsed.payload.id, parsed.payload.tail || 100);
+            transportManager.broadcast(deviceId, JSON.stringify({ type: 'response', requestId, status: 'success', payload: { logs } }));
+          } else {
+            transportManager.broadcast(deviceId, JSON.stringify({ type: 'response', requestId, status: 'error', error: 'Unknown action' }));
+          }
+        } catch (err: any) {
+          transportManager.broadcast(deviceId, JSON.stringify({ type: 'response', requestId, status: 'error', error: err.message }));
+        }
+      }
+    } catch (err) {
+      console.warn(`[Transport] Received invalid message format from ${deviceId}`, err);
     }
   });
 
@@ -222,8 +308,10 @@ async function main() {
     try {
       const decoded = app.jwt.verify(token) as { deviceId: string; deviceName: string };
       deviceId = decoded.deviceId;
-      // Register socket with deviceId
-      activeSockets.add({ deviceId, socket });
+      
+      const transport = new WebSocketTransport(socket, deviceId);
+      transportManager.addTransport(transport);
+      
       console.log(`[WS] Connection authenticated for device ${decoded.deviceName} (${deviceId})`);
       console.log(`[WS] Socket readyState after auth: ${socket.readyState}`);
       addAuditLog('WS_CONNECT', deviceId, `Device connected to WebSockets.`);
@@ -234,53 +322,9 @@ async function main() {
       return;
     }
 
-    // Periodically send dynamic system updates
-    intervalId = setInterval(async () => {
-      try {
-        const dynamicInfo = await getDynamicInfo();
-        if (socket.readyState === socket.OPEN) {
-          socket.send(JSON.stringify({ type: 'system_update', data: dynamicInfo }));
-        }
-      } catch (err) {
-        console.error('[WS] Error fetching system updates:', err);
-      }
-    }, 2000);
-
-    socket.on('message', async (message: any) => {
-      try {
-        const parsed = JSON.parse(message.toString());
-        if (parsed.type === 'ping') {
-          socket.send(JSON.stringify({ type: 'pong' }));
-        } else if (parsed.type === 'sync_notifications') {
-          const since = parsed.timestamp || 0;
-          const missed = await getMissedNotifications(since);
-          socket.send(JSON.stringify({ type: 'sync_notifications_result', data: missed }));
-        } else if (parsed.type === 'ack_notification') {
-          const id = parsed.id;
-          if (id) await markNotificationAcknowledged(id);
-        }
-      } catch (err) {
-        console.warn('[WS] Received invalid message format', err);
-      }
-    });
-
-    socket.on('error', (err: any) => {
-      console.error(`[WS] Socket error for device ${deviceId}:`, err);
-    });
-
     socket.on('close', (code: any, reason: any) => {
       const reasonStr = reason ? reason.toString() : 'none';
       console.log(`[WS] Connection closed for device: ${deviceId} | code=${code} reason=${reasonStr}`);
-      if (intervalId) clearInterval(intervalId);
-      
-      // Remove socket from active list
-      for (const client of activeSockets) {
-        if (client.socket === socket) {
-          activeSockets.delete(client);
-          break;
-        }
-      }
-      
       addAuditLog('WS_DISCONNECT', deviceId, `Device disconnected. code=${code} reason=${reasonStr}`);
     });
   });
@@ -341,6 +385,9 @@ async function main() {
   // Start Notification Engine
   startNotificationEngine();
 
+  // Start Bluetooth RFCOMM server
+  await bluetoothServer.start();
+
   // ── Input Subsystem ────────────────────────────────────────────────────────
   
   // Spawn the Rust daemon automatically
@@ -371,6 +418,7 @@ signals.forEach((signal) => {
   process.on(signal, async () => {
     console.log(`\n[Server] Received ${signal}, shutting down gracefully...`);
     stopDiscovery();
+    await bluetoothServer.stop();
     await app.close();
     process.exit(0);
   });

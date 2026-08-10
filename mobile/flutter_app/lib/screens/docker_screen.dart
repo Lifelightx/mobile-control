@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../api_client.dart';
+import '../transport/transport_manager.dart';
 
 class DockerScreen extends StatefulWidget {
   final String ip;
@@ -18,7 +18,6 @@ class DockerScreen extends StatefulWidget {
 }
 
 class _DockerScreenState extends State<DockerScreen> {
-  final ApiClient _apiClient = ApiClient();
   List<dynamic> _containers = [];
   bool _isLoading = false;
 
@@ -31,10 +30,10 @@ class _DockerScreenState extends State<DockerScreen> {
   Future<void> _loadContainers() async {
     setState(() => _isLoading = true);
     try {
-      final containers = await _apiClient.listDockerContainers(widget.ip, widget.port, widget.token);
+      final response = await transportManager.sendRequest('docker.list_containers', {'all': true});
       if (mounted) {
         setState(() {
-          _containers = containers;
+          _containers = response['containers'] ?? [];
           _isLoading = false;
         });
       }
@@ -49,11 +48,11 @@ class _DockerScreenState extends State<DockerScreen> {
   Future<void> _performAction(String action, String id, String name) async {
     try {
       if (action == 'start') {
-        await _apiClient.startDockerContainer(widget.ip, widget.port, widget.token, id);
+        await transportManager.sendRequest('docker.start', {'id': id});
       } else if (action == 'stop') {
-        await _apiClient.stopDockerContainer(widget.ip, widget.port, widget.token, id);
+        await transportManager.sendRequest('docker.stop', {'id': id});
       } else if (action == 'restart') {
-        await _apiClient.restartDockerContainer(widget.ip, widget.port, widget.token, id);
+        await transportManager.sendRequest('docker.restart', {'id': id});
       }
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Successfully ${action}ed $name')));
       _loadContainers();
@@ -69,7 +68,8 @@ class _DockerScreenState extends State<DockerScreen> {
         backgroundColor: const Color(0xFF1E293B),
         title: Text('Logs: $name', style: const TextStyle(color: Colors.white, fontSize: 16)),
         content: FutureBuilder<String>(
-          future: _apiClient.getDockerContainerLogs(widget.ip, widget.port, widget.token, id),
+          future: transportManager.sendRequest('docker.logs', {'id': id, 'tail': 100})
+              .then((res) => res['logs'] as String? ?? 'No logs'),
           builder: (ctx, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const SizedBox(height: 100, child: Center(child: CircularProgressIndicator(color: Colors.cyan)));

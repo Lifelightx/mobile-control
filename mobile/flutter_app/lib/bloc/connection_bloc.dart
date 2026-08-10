@@ -3,7 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:uuid/uuid.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../api_client.dart';
-import '../websocket_client.dart';
+import '../hub_client.dart';
 import '../discovery_service.dart';
 
 // --- Events ---
@@ -61,6 +61,7 @@ class DashboardActive extends HubConnectionState {
   final String ip;
   final int port;
   final String deviceName;
+  final String activeTransport;
   final Map<String, dynamic> staticInfo;
   final Map<String, dynamic> liveMetrics;
 
@@ -68,6 +69,7 @@ class DashboardActive extends HubConnectionState {
     required this.ip,
     required this.port,
     required this.deviceName,
+    required this.activeTransport,
     required this.staticInfo,
     required this.liveMetrics,
   });
@@ -79,6 +81,7 @@ class DashboardActive extends HubConnectionState {
       ip: ip,
       port: port,
       deviceName: deviceName,
+      activeTransport: activeTransport,
       staticInfo: staticInfo,
       liveMetrics: liveMetrics ?? this.liveMetrics,
     );
@@ -93,7 +96,7 @@ class ConnectionFailure extends HubConnectionState {
 // --- BLoC Implementation ---
 class ConnectionBloc extends Bloc<ConnectionEvent, HubConnectionState> {
   final ApiClient _apiClient = ApiClient();
-  final WebSocketClient _wsClient = WebSocketClient();
+  final HubClient _wsClient = HubClient();
   final DiscoveryService _discoveryService = DiscoveryService();
   final _storage = const FlutterSecureStorage();
 
@@ -160,25 +163,34 @@ class ConnectionBloc extends Bloc<ConnectionEvent, HubConnectionState> {
       const deviceName = 'Testing Mobile Client';
 
       // Perform HTTP pair request
-      final token = await _apiClient.pair(
-        ip: event.agent.ip,
-        port: event.agent.port,
-        deviceId: deviceId,
-        deviceName: deviceName,
-        secret: event.secret,
-      );
+      String? token;
+
+      // If IP is 0.0.0.0, perform Bluetooth-Native pairing
+      if (event.agent.ip == '0.0.0.0') {
+        token = await _wsClient.pairViaBluetooth(deviceId, deviceName, event.secret);
+      } else {
+        token = await _apiClient.pair(
+          ip: event.agent.ip,
+          port: event.agent.port,
+          deviceId: deviceId,
+          deviceName: deviceName,
+          secret: event.secret,
+        );
+      }
 
       if (token != null) {
-        // Fetch static system info
-        final systemInfo = await _apiClient.fetchSystemInfo(event.agent.ip, event.agent.port, token);
+        await _storage.write(key: 'token', value: token);
+        await _storage.write(key: 'ip', value: event.agent.ip == '0.0.0.0' ? '127.0.0.1' : event.agent.ip); // Dummy IP to force fallback logic
+        await _storage.write(key: 'port', value: event.agent.port.toString());
 
-        // Connect WebSocket — must await so handshake is done before emitting
-        await _connectWs(event.agent.ip, event.agent.port, token);
+        // Connect WebSocket/Bluetooth — this now returns system info!
+        final systemInfo = await _connectWs(event.agent.ip == '0.0.0.0' ? '127.0.0.1' : event.agent.ip, event.agent.port, token);
 
         emit(DashboardActive(
           ip: event.agent.ip,
           port: event.agent.port,
           deviceName: deviceName,
+          activeTransport: _wsClient.activeTransport?.name.toUpperCase() ?? 'UNKNOWN',
           staticInfo: systemInfo,
           liveMetrics: systemInfo, // initial metrics
         ));
@@ -200,16 +212,14 @@ class ConnectionBloc extends Bloc<ConnectionEvent, HubConnectionState> {
         final ip = saved['ip']!;
         final port = int.parse(saved['port']!);
         
-        // Fetch fresh system info to confirm connection is still alive
-        final systemInfo = await _apiClient.fetchSystemInfo(ip, port, token);
-
-        // Connect WebSocket — must await so handshake is done before emitting
-        await _connectWs(ip, port, token);
+        // Connect Transport (Wi-Fi or Bluetooth) — this now returns system info!
+        final systemInfo = await _connectWs(ip, port, token);
 
         emit(DashboardActive(
           ip: ip,
           port: port,
           deviceName: 'Antigravity Mobile Client',
+          activeTransport: _wsClient.activeTransport?.name.toUpperCase() ?? 'UNKNOWN',
           staticInfo: systemInfo,
           liveMetrics: systemInfo,
         ));
@@ -248,7 +258,7 @@ class ConnectionBloc extends Bloc<ConnectionEvent, HubConnectionState> {
     add(StartDiscovery());
   }
 
-  Future<void> _connectWs(String ip, int port, String token) async {
+  Future<Map<String, dynamic>> _connectWs(String ip, int port, String token) async {
     // Set guard FIRST before any await — the await cancel() suspension
     // point would otherwise allow WebSocketDisconnected to run disconnect()
     // and null out _channel before we even start the handshake.
@@ -257,7 +267,7 @@ class ConnectionBloc extends Bloc<ConnectionEvent, HubConnectionState> {
     _metricsSubscription = null;
     try {
       AppLogger.log('[Bloc] WS Connection Initiating', ip, port);
-      await _wsClient.connect(ip, port, token);
+      final systemInfo = await _wsClient.connect(ip, port, token);
       AppLogger.log('[Bloc] WS Handshake complete, subscribing to metric stream.', ip, port);
 
       _metricsSubscription = _wsClient.metricStream.listen(
@@ -273,6 +283,8 @@ class ConnectionBloc extends Bloc<ConnectionEvent, HubConnectionState> {
           add(WebSocketDisconnected('WebSocket connection closed (Code: $code, Reason: $reason).'));
         },
       );
+      
+      return systemInfo;
     } finally {
       _isConnecting = false;
     }
