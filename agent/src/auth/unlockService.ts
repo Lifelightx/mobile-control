@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import { exec } from 'child_process';
-import { getDb, addAuditLog } from '../database/db';
+import { getDevice, addAuditLog } from '../database/db';
 
 // Track used nonces to prevent replay attacks (in-memory, cleared on restart)
 const usedNonces = new Set<string>();
@@ -94,7 +94,7 @@ export async function handleUnlockRequest(
   req: UnlockRequest,
   jwtToken: string
 ): Promise<{ success: boolean; error?: string }> {
-  const db = await getDb();
+
 
   // 1. Validate timestamp (reject requests older than 30 seconds)
   const now = Date.now();
@@ -110,12 +110,8 @@ export async function handleUnlockRequest(
   }
 
   // 3. Verify device is paired and active
-  const device = await db.get(
-    'SELECT id, name FROM devices WHERE id = ? AND status = ?',
-    req.deviceId,
-    'paired'
-  );
-  if (!device) {
+  const device = await getDevice(req.deviceId);
+  if (!device || device.status !== 'paired') {
     await addAuditLog('UNLOCK_REJECTED', req.deviceId, 'Device not found or not paired');
     return { success: false, error: 'Device not authorized' };
   }

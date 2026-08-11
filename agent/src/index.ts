@@ -5,7 +5,7 @@ import fastifyStatic from '@fastify/static';
 import { z } from 'zod';
 import dotenv from 'dotenv';
 import path from 'path';
-import { getDb, addAuditLog } from './database/db';
+import { initStore, addAuditLog } from './database/db';
 import { getJwtSecret, getActivePairingSecret, generatePairingSecret, pairDevice, verifyDevice } from './auth/authService';
 import { startDiscovery, stopDiscovery } from './services/discovery';
 import { getLocalIpAddress } from './utils/network';
@@ -29,7 +29,7 @@ import { getIpcClient } from './input/ipc';
 import { handleInputPacket } from './input/handler';
 import { transportManager } from './transport/transport-manager';
 import { WebSocketTransport } from './transport/wifi/websocket-transport';
-import { bluetoothServer } from './transport/bluetooth/bluetooth-server';
+
 
 dotenv.config();
 
@@ -45,7 +45,7 @@ const pairSchema = z.object({
 
 async function main() {
   // Ensure DB is initialized
-  await getDb();
+  await initStore();
 
   // Retrieve JWT secret persistently
   const secretKey = await getJwtSecret();
@@ -385,8 +385,7 @@ async function main() {
   // Start Notification Engine
   startNotificationEngine();
 
-  // Start Bluetooth RFCOMM server
-  await bluetoothServer.start();
+
 
   // ── Input Subsystem ────────────────────────────────────────────────────────
   
@@ -418,7 +417,7 @@ signals.forEach((signal) => {
   process.on(signal, async () => {
     console.log(`\n[Server] Received ${signal}, shutting down gracefully...`);
     stopDiscovery();
-    await bluetoothServer.stop();
+
     await app.close();
     process.exit(0);
   });

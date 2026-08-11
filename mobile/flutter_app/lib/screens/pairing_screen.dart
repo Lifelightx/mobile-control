@@ -168,19 +168,7 @@ class _PairingScreenState extends State<PairingScreen> with SingleTickerProvider
           ),
         ),
         actions: [
-          TextButton(
-            onPressed: () {
-              final secret = _secretController.text.trim();
-              if (secret.isNotEmpty) {
-                Navigator.pop(dialogContext);
-                context.read<ConnectionBloc>().add(PairDevice(
-                  agent: DiscoveredAgent(name: 'Bluetooth Agent', ip: '0.0.0.0', port: 3000),
-                  secret: secret,
-                ));
-              }
-            },
-            child: const Text('Pair via Bluetooth', style: TextStyle(color: Colors.cyan)),
-          ),
+
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
             child: const Text('Cancel', style: TextStyle(color: Colors.white30)),

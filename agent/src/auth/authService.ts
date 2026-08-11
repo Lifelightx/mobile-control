@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import qrcode from 'qrcode-terminal';
 import { createVerifier } from 'fast-jwt';
-import { getDb, addAuditLog } from '../database/db';
+import { getSetting, setSetting, getDevice, saveDevice, addAuditLog } from '../database/db';
 
 let jwtSecret: string | null = null;
 let currentPairingSecret: string | null = null;
@@ -10,20 +10,13 @@ let pairingSecretExpiresAt: number = 0;
 export async function getJwtSecret(): Promise<string> {
   if (jwtSecret) return jwtSecret;
 
-  const db = await getDb();
-  const row = await db.get('SELECT value FROM settings WHERE key = ?', 'jwt_secret');
-
-  if (row) {
-    jwtSecret = row.value;
-  } else {
-    // Generate a secure random secret
-    jwtSecret = crypto.randomBytes(32).toString('hex');
-    await db.run('INSERT INTO settings (key, value) VALUES (?, ?)', 'jwt_secret', jwtSecret);
-    console.log('[Auth] Generated and saved a new JWT secret.');
-  }
+  jwtSecret = await getSetting('jwt_secret');
 
   if (!jwtSecret) {
-    throw new Error('JWT secret was not successfully loaded or generated.');
+    // Generate a secure random secret
+    jwtSecret = crypto.randomBytes(32).toString('hex');
+    await setSetting('jwt_secret', jwtSecret);
+    console.log('[Auth] Generated and saved a new JWT secret.');
   }
 
   return jwtSecret;
@@ -73,17 +66,14 @@ export async function pairDevice(
     return { success: false, message: 'Invalid or expired pairing code' };
   }
 
-  const db = await getDb();
-  
   // Register or update device
-  await db.run(
-    `INSERT OR REPLACE INTO devices (id, name, public_key, paired_at, status) 
-     VALUES (?, ?, ?, ?, 'paired')`,
-    deviceId,
-    deviceName,
-    publicKey || null,
-    Date.now()
-  );
+  await saveDevice({
+    id: deviceId,
+    name: deviceName,
+    public_key: publicKey || null,
+    paired_at: Date.now(),
+    status: 'paired'
+  });
 
   // Invalidate pairing code after successful pairing (disabled for development convenience)
   // currentPairingSecret = null;
@@ -95,9 +85,8 @@ export async function pairDevice(
 }
 
 export async function verifyDevice(deviceId: string): Promise<boolean> {
-  const db = await getDb();
-  const device = await db.get('SELECT id FROM devices WHERE id = ? AND status = ?', deviceId, 'paired');
-  return !!device;
+  const device = await getDevice(deviceId);
+  return !!device && device.status === 'paired';
 }
 
 let jwtVerifier: any = null;

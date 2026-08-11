@@ -1,6 +1,5 @@
 export enum TransportType {
   WIFI = 'wifi',
-  BLUETOOTH = 'bluetooth',
 }
 
 export interface Transport {

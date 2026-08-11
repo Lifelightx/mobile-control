@@ -1,4 +1,4 @@
-import { getDb } from '../database/db';
+import { getAutomationRules, saveAutomationRule, deleteAutomationRule, addNotificationRaw, getAllNotificationsRaw, markAllNotificationsReadRaw } from '../database/db';
 import { getDynamicInfo } from './systemService';
 import { listContainers } from './dockerService';
 import { exec } from 'child_process';
@@ -20,51 +20,43 @@ let evaluationInterval: NodeJS.Timeout | null = null;
 const recentlyTriggered = new Map<string, number>();
 
 export async function getRules(): Promise<AutomationRule[]> {
-  const db = await getDb();
-  return db.all('SELECT * FROM automation_rules');
+  return getAutomationRules();
 }
 
 export async function addRule(rule: Omit<AutomationRule, 'id'>): Promise<string> {
-  const db = await getDb();
   const id = Math.random().toString(36).substring(2, 15);
-  await db.run(
-    'INSERT INTO automation_rules (id, name, trigger_type, trigger_config, action_type, action_config, enabled) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    id, rule.name, rule.trigger_type, rule.trigger_config, rule.action_type, rule.action_config, rule.enabled
-  );
+  const newRule = { ...rule, id };
+  await saveAutomationRule(newRule);
   return id;
 }
 
 export async function updateRule(id: string, enabled: boolean): Promise<void> {
-  const db = await getDb();
-  await db.run('UPDATE automation_rules SET enabled = ? WHERE id = ?', enabled ? 1 : 0, id);
+  const rules = await getAutomationRules();
+  const rule = rules.find(r => r.id === id);
+  if (rule) {
+    rule.enabled = enabled ? 1 : 0;
+    await saveAutomationRule(rule);
+  }
 }
 
 export async function deleteRule(id: string): Promise<void> {
-  const db = await getDb();
-  await db.run('DELETE FROM automation_rules WHERE id = ?', id);
+  await deleteAutomationRule(id);
 }
 
 export async function createNotification(title: string, message: string): Promise<void> {
-  const db = await getDb();
   const id = Math.random().toString(36).substring(2, 15);
-  await db.run(
-    'INSERT INTO notifications (id, title, message, timestamp, read) VALUES (?, ?, ?, ?, ?)',
-    id, title, message, Date.now(), 0
-  );
+  await addNotificationRaw({
+    id, title, message, timestamp: Date.now(), read: 0, acknowledged: 0
+  });
   // Emit to WS (to be handled in index.ts or websocket layer)
 }
 
 export async function getNotifications(onlyUnread: boolean = false) {
-  const db = await getDb();
-  if (onlyUnread) {
-    return db.all('SELECT * FROM notifications WHERE read = 0 ORDER BY timestamp DESC');
-  }
-  return db.all('SELECT * FROM notifications ORDER BY timestamp DESC LIMIT 50');
+  return getAllNotificationsRaw(onlyUnread);
 }
 
 export async function markNotificationsRead(): Promise<void> {
-  const db = await getDb();
-  await db.run('UPDATE notifications SET read = 1 WHERE read = 0');
+  await markAllNotificationsReadRaw();
 }
 
 export function startAutomationEngine() {

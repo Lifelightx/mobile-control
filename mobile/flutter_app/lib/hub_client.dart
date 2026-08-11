@@ -7,8 +7,7 @@ import 'notification_service.dart';
 import 'transport/transport.dart';
 import 'transport/transport_manager.dart';
 import 'transport/wifi/websocket_transport.dart';
-import 'transport/bluetooth/bluetooth_transport.dart';
-import 'transport/bluetooth/bluetooth_platform.dart';
+
 import 'package:permission_handler/permission_handler.dart';
 
 class HubClient {
@@ -56,52 +55,8 @@ class HubClient {
         transportManager.setActiveTransport(TransportType.wifi);
         AppLogger.log('[HubClient] Wi-Fi Handshake complete.', ip, port);
       } catch (e) {
-        AppLogger.log('[HubClient] Wi-Fi failed, checking Bluetooth paired devices.', ip, port);
-        // Phase 9: Automatic Fallback to Bluetooth
-        bool btConnected = false;
-        // Request permissions before attempting fallback
-        await [
-          Permission.bluetoothConnect,
-          Permission.bluetoothScan,
-          Permission.location,
-        ].request();
-
-        try {
-          final devices = await BluetoothPlatform.getPairedDevices();
-          if (devices.isNotEmpty) {
-            // Pick the first paired device for now or we could match a saved MAC
-            final address = devices.first['address'] as String;
-            final btTransport = BluetoothTransport(address);
-            await btTransport.connect();
-            
-            // Phase 7: Authenticate
-            final authPayload = utf8.encode(jsonEncode({
-              'type': 'auth',
-              'protocolVersion': 1,
-              'token': token,
-            })) as Uint8List;
-            
-            await btTransport.send(authPayload);
-            
-            final authResponseData = await btTransport.onData.first.timeout(const Duration(seconds: 5));
-            final authResponse = jsonDecode(utf8.decode(authResponseData));
-            
-            if (authResponse['type'] == 'auth_success') {
-              transportManager.addTransport(btTransport);
-              transportManager.setActiveTransport(TransportType.bluetooth);
-              btConnected = true;
-              AppLogger.log('[HubClient] Bluetooth connection authenticated and successful.');
-            } else {
-              throw Exception('Bluetooth auth failed: ${authResponse['error']}');
-            }
-          }
-        } catch (btErr) {
-          AppLogger.log('[HubClient] Bluetooth fallback failed: $btErr');
-        }
-
-        if (!btConnected) {
-          throw Exception('Both Wi-Fi and Bluetooth connection failed');
-        }
+        AppLogger.log('[HubClient] Wi-Fi connection failed: $e', ip, port);
+        throw Exception('Wi-Fi connection failed');
       }
 
       // Sync missed notifications
@@ -210,84 +165,7 @@ class HubClient {
     }
   }
 
-  Future<String> pairViaBluetooth(String deviceId, String deviceName, String secret) async {
-    // Request permissions for Android 12+
-    await [
-      Permission.bluetoothConnect,
-      Permission.bluetoothScan,
-      Permission.location,
-    ].request();
 
-    final devices = await BluetoothPlatform.getPairedDevices();
-    if (devices.isEmpty) throw Exception("No paired Bluetooth devices found on your phone. Please pair with the laptop in Android Settings first.");
-    
-    List<String> errors = [];
-
-    for (var device in devices) {
-      final name = device['name'] as String? ?? 'Unknown';
-      try {
-        final address = device['address'] as String;
-        final connected = await BluetoothPlatform.connect(address);
-        if (!connected) {
-          errors.add("$name: Connection refused.");
-          continue;
-        }
-
-        final completer = Completer<String>();
-        StreamSubscription? sub;
-        
-        sub = BluetoothPlatform.onEvents.listen((event) {
-          if (event is Map) {
-            final type = event['type'];
-            if (type == 'data') {
-              final data = event['data'] as Uint8List;
-              try {
-                if (data.length > 4) {
-                  final payload = data.sublist(4);
-                  final message = utf8.decode(payload);
-                  final parsed = jsonDecode(message);
-                  if (parsed['type'] == 'pair_success') {
-                    completer.complete(parsed['token']);
-                  } else if (parsed['type'] == 'pair_failure') {
-                    completer.completeError(parsed['error'] ?? 'Server rejected pairing');
-                  }
-                }
-              } catch (e) {}
-            } else if (type == 'disconnected') {
-              if (!completer.isCompleted) completer.completeError("Socket disconnected");
-            }
-          }
-        });
-        
-        void sendFrame(String msg) {
-          final payload = utf8.encode(msg) as Uint8List;
-          final header = ByteData(4);
-          header.setUint32(0, payload.length, Endian.big);
-          final frame = Uint8List(4 + payload.length);
-          frame.setAll(0, header.buffer.asUint8List());
-          frame.setAll(4, payload);
-          BluetoothPlatform.send(frame);
-        }
-        
-        sendFrame(jsonEncode({
-          'type': 'pair',
-          'deviceId': deviceId,
-          'deviceName': deviceName,
-          'secret': secret
-        }));
-        
-        final token = await completer.future.timeout(const Duration(seconds: 10));
-        sub.cancel();
-        
-        await BluetoothPlatform.disconnect();
-        return token;
-      } catch (e) {
-         errors.add("$name: $e");
-         await BluetoothPlatform.disconnect();
-      }
-    }
-    throw Exception("Bluetooth Pairing Failed:\n" + errors.join("\n"));
-  }
 
   void disconnect() {
     _isReconnecting = false;

@@ -165,26 +165,21 @@ class ConnectionBloc extends Bloc<ConnectionEvent, HubConnectionState> {
       // Perform HTTP pair request
       String? token;
 
-      // If IP is 0.0.0.0, perform Bluetooth-Native pairing
-      if (event.agent.ip == '0.0.0.0') {
-        token = await _wsClient.pairViaBluetooth(deviceId, deviceName, event.secret);
-      } else {
-        token = await _apiClient.pair(
-          ip: event.agent.ip,
-          port: event.agent.port,
-          deviceId: deviceId,
-          deviceName: deviceName,
-          secret: event.secret,
-        );
-      }
+      token = await _apiClient.pair(
+        ip: event.agent.ip,
+        port: event.agent.port,
+        deviceId: deviceId,
+        deviceName: deviceName,
+        secret: event.secret,
+      );
 
       if (token != null) {
         await _storage.write(key: 'token', value: token);
-        await _storage.write(key: 'ip', value: event.agent.ip == '0.0.0.0' ? '127.0.0.1' : event.agent.ip); // Dummy IP to force fallback logic
+        await _storage.write(key: 'ip', value: event.agent.ip);
         await _storage.write(key: 'port', value: event.agent.port.toString());
 
-        // Connect WebSocket/Bluetooth — this now returns system info!
-        final systemInfo = await _connectWs(event.agent.ip == '0.0.0.0' ? '127.0.0.1' : event.agent.ip, event.agent.port, token);
+        // Connect WebSocket — this now returns system info!
+        final systemInfo = await _connectWs(event.agent.ip, event.agent.port, token);
 
         emit(DashboardActive(
           ip: event.agent.ip,

@@ -3,7 +3,6 @@ import 'dart:typed_data';
 
 enum TransportType {
   wifi,
-  bluetooth,
 }
 
 abstract class Transport {
